@@ -12,6 +12,8 @@ double Output;
 const double Kp = 2, Ki = 5, Kd = 1;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
+bool MIJ_STATUS = false;
+
 // ---- Pour faire des requêtes HTTP ----
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -55,9 +57,13 @@ void HandleFileRequest()
   httpd.sendHeader("Cache-Control", "max-age=31536000, immutable");
 
   size_t sent = httpd.streamFile(file, GetContentType(filename));
-  Serial.printf("[HTTP] %s: size=%u, sent=%u\n", filename.c_str(), (unsigned)file.size(), (unsigned)sent);
+  Serial.printf("[HTTP] %s: size=%u, sent=%u\n\n", filename.c_str(), (unsigned)file.size(), (unsigned)sent);
 
   file.close();
+}
+
+void HandleGetStatus(){
+  
 }
 
 void setup()
@@ -67,7 +73,12 @@ void setup()
   WiFi.softAP(ssid, pwd);
   Serial.print(WiFi.softAPIP()); // Mets en claire l'IP de l'access point
 
+  // Request web server
   LittleFS.begin();
+
+  httpd.on("/GetStatus", HandleGetStatus);  
+
+
   httpd.onNotFound(HandleFileRequest);
   httpd.begin();
 }
@@ -75,4 +86,5 @@ void setup()
 void loop()
 {
   httpd.handleClient(); // le mettre au moins une fois dans le loop pour accéder au site (serveur)
+
 }
