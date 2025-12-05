@@ -62,8 +62,27 @@ void HandleFileRequest()
   file.close();
 }
 
-void HandleGetStatus(){
-  
+void HandleGetStatus()
+{
+  String status = MIJ_STATUS ? "on" : "off";
+  httpd.send(200, "text/plain", status.c_str());
+}
+
+void HandleChangeStatus()
+{
+  String response = httpd.arg("status");
+  response.trim();
+  response.toLowerCase();
+  if (response = "on")
+  {
+    MIJ_STATUS = false;
+    // debug
+    Serial.println("Mijoteuse [OFF]");
+  } else if (response = "off")
+  {
+    MIJ_STATUS = true;
+    Serial.println("Mijoteuse [ON]");
+  }
 }
 
 void setup()
@@ -76,8 +95,9 @@ void setup()
   // Request web server
   LittleFS.begin();
 
-  httpd.on("/GetStatus", HandleGetStatus);  
-
+  httpd.on("/GetStatus", HandleGetStatus);
+  httpd.on("/ChangeStatus", HandleChangeStatus);
+  // httpd.on("/Temperatures", HandleTemperature);
 
   httpd.onNotFound(HandleFileRequest);
   httpd.begin();
@@ -86,5 +106,4 @@ void setup()
 void loop()
 {
   httpd.handleClient(); // le mettre au moins une fois dans le loop pour accéder au site (serveur)
-
 }
