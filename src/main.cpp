@@ -6,18 +6,19 @@
 // PID (Pour Mijoteuse)
 #include <PID_v1.h>
 
-#define PIN_ACTIVATION  D1
+#define PIN_ACTIVATION D1
 #define PIN_TEMP A0
-
 
 double Setpoint = 43.0;
 double Input;
 double Output;
 
-const double Kp = 2, Ki = 5, Kd = 1;
+const double Kp = 6, Ki = 0.1, Kd = 30;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 bool MIJ_STATUS = false;
+
+unsigned long last_ms = 0;
 
 // ---- Pour faire des requêtes HTTP ----
 #include <ESP8266HTTPClient.h>
@@ -73,20 +74,22 @@ void HandleGetStatus()
   httpd.send(200, "text/plain", status.c_str());
 }
 
-void applyChange(bool on){
-  digitalWrite(PIN_ACTIVATION, on ? HIGH : LOW);
+void applyChange(bool on)
+{
+  digitalWrite(PIN_ACTIVATION, on ? (int)Output : 0);
 }
 
 void HandleChangeStatus()
 {
-  String response ;
+  String response;
   if (MIJ_STATUS)
   {
     MIJ_STATUS = false;
     response = "off";
     // debug
     Serial.println("Mijoteuse [OFF]");
-  } else
+  }
+  else
   {
     MIJ_STATUS = true;
     response = "on";
@@ -96,7 +99,14 @@ void HandleChangeStatus()
   httpd.send(200, "text/plain", response.c_str());
 }
 
-
+double TemperatureCelcius()
+{
+  int valeur = analogRead(PIN_TEMP);
+  double voltage = valeur * 5.0 / 1023.0;
+  double resistance = 10000.0 * voltage / (5.0 - voltage);
+  double temperatureKelvin = 1 / (1 / 298.15 + log(resistance / 10000.0) / 3977);
+  return temperatureKelvin - 273.15;
+}
 
 void setup()
 {
@@ -105,8 +115,13 @@ void setup()
   pinMode(PIN_ACTIVATION, OUTPUT);
   applyChange(false);
 
+  
   WiFi.softAP(ssid, pwd);
   Serial.println(WiFi.softAPIP()); // Mets en claire l'IP de l'access point
+  
+  myPID.SetOutputLimits(0 ,1023);
+  myPID.SetSampleTime(1000);
+  myPID.SetMode(MANUAL);
 
   // Request web server
   LittleFS.begin();
@@ -115,6 +130,8 @@ void setup()
   httpd.on("/ChangeStatus", HandleChangeStatus);
   // httpd.on("/Temperatures", HandleTemperature);
 
+  last_ms = millis();
+
   httpd.onNotFound(HandleFileRequest);
   httpd.begin();
 }
@@ -122,10 +139,29 @@ void setup()
 void loop()
 {
   httpd.handleClient(); // le mettre au moins une fois dans le loop pour accéder au site (serveur)
-  if (MIJ_STATUS)
+  if (millis() - last_ms > 1000UL)
   {
-    applyChange(true);
-    Serial.println("MIJOTEUSE est allumé !");
-  }else
-    applyChange(false);
+    last_ms = millis();
+    if (MIJ_STATUS)
+    {
+      Input = TemperatureCelcius();
+      myPID.Compute();
+      applyChange(true);
+      myPID.SetMode(AUTOMATIC);      
+      
+      double pct = (Output / 1023) * 100;
+
+      Serial.print("Temp = ");
+      Serial.print(Input);
+      Serial.print(" | Puissance = ");
+      Serial.print(pct);
+      Serial.println(" %");
+
+    }
+    else
+    {
+      applyChange(false);
+      Serial.println("La mijoteuse en éteint !");
+    }
+  }
 }
